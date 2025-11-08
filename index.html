@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ultimate Tic Tac Toe — Advanced</title>
+<style>
+  :root{
+    --gap:8px;
+    --board-size:720px;
+    --bg:#071129;
+    --card:#071428;
+    --muted:#9fb7da;
+    --accent:#60a5fa;
+    --ok:#22c55e;
+    --danger:#ef4444;
+  }
+  html,body{height:100%}
+  body{
+    margin:0; padding:18px; font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+    background:linear-gradient(180deg,var(--bg),#041027 140%); color:#eaf6ff; display:flex;flex-direction:column;align-items:center;
+  }
+  .wrap{width:var(--board-size);max-width:96vw;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+  header{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  h1{margin:0;font-size:20px}
+  .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{background:var(--accent);border:0;padding:8px 10px;border-radius:8px;color:#002;cursor:pointer;font-weight:600}
+  .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+  .panel{background:linear-gradient(180deg,#071428,#041428);padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 10px 30px rgba(2,6,23,0.6)}
+  .meta{color:var(--muted);font-size:13px;margin-top:4px}
+  .game{flex:1;min-width:320px}
+  .big-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap);background:transparent}
+  .big-cell{
+    background:#051420;padding:6px;border-radius:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+    position:relative;min-height:calc(var(--board-size)/3 - 2*var(--gap));box-shadow:0 8px 22px rgba(2,6,23,0.6);
+    border:2px solid rgba(255,255,255,0.03);transition:transform .12s ease,box-shadow .12s;
+  }
+  .big-cell.allowed{box-shadow:0 12px 28px rgba(96,165,250,0.08);outline:4px solid rgba(96,165,250,0.08);transform:translateY(-2px)}
+  .big-cell.won{opacity:0.93}
+  .small-btn{
+    background:#041b24;border:1px solid rgba(255,255,255,0.03);border-radius:10px;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;
+    font-size:20px;color:#dff6ff;cursor:pointer;user-select:none;padding:6px;transition:background .12s,transform .08s;
+    touch-action:manipulation;
+  }
+  .small-btn:active{transform:scale(.98)}
+  .small-btn.disabled{cursor:not-allowed;opacity:0.45}
+  /* highlight valid small cells */
+  .small-btn.valid{outline:3px solid rgba(34,197,94,0.14);box-shadow:0 8px 16px rgba(34,197,94,0.04)}
+  .small-btn.valid.ai-hint{outline:3px solid rgba(96,165,250,0.20);box-shadow:0 10px 24px rgba(96,165,250,0.05)}
+  .owner-overlay{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:56px;font-weight:800;color:rgba(255,255,255,0.92);
+    pointer-events:none;border-radius:10px;background:linear-gradient(0deg, rgba(255,255,255,0.02), transparent);
+  }
+  .owner-overlay.tie{font-size:24px;opacity:0.8}
+  .side{width:300px;min-width:220px}
+  .score{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px;border-radius:8px;background:linear-gradient(180deg,#072037,#041126);margin-bottom:8px}
+  .score .row{display:flex;flex-direction:column}
+  .badge{font-size:22px;font-weight:800}
+  .tiny{font-size:12px;color:var(--muted)}
+  .footer{margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .select{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted);padding:6px;border-radius:8px}
+  .log{margin-top:10px;color:var(--muted);font-size:13px}
+  /* responsiveness for mobile: make board smaller and buttons bigger */
+  @media (max-width:720px){
+    :root{--board-size:480px}
+    .owner-overlay{font-size:48px}
+    .small-btn{font-size:18px;border-radius:8px}
+    .side{width:100%}
+    .wrap{flex-direction:column;align-items:center}
+  }
+  @media (max-width:420px){
+    :root{--board-size:360px}
+    .owner-overlay{font-size:40px}
+    .small-btn{font-size:16px}
+  }
+</style>
+</head>
+<body>
+  <header style="width:100%;max-width:96vw;">
+    <div>
+      <h1>Ultimate Tic Tac Toe — Advanced</h1>
+      <div class="meta">Player A = O (kamu) • Player B = X (lawan/teman)</div>
+    </div>
+    <div class="controls">
+      <button id="restartBtn" class="btn">Restart</button>
+      <button id="undoBtn" class="btn ghost">Undo</button>
+      <select id="modeSel" class="select" title="Mode permainan">
+        <option value="local">2 Player (Lokal)</option>
+        <option value="ai">Main vs AI</option>
+      </select>
+      <select id="aiLevel" class="select" title="Level AI">
+        <option value="easy">AI: Mudah</option>
+        <option value="medium" selected>AI: Sedang</option>
+        <option value="hard">AI: Sulit</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="wrap" role="main">
+    <div class="game panel">
+      <div id="bigGrid" class="big-grid" aria-label="Papan utama"></div>
+      <div class="footer" style="margin-top:10px;align-items:center;">
+        <div id="status" class="panel" style="padding:8px;border-radius:8px;">Giliran: O (Player A)</div>
+        <div id="nextInfo" class="panel" style="padding:8px;border-radius:8px;color:var(--muted)">Target kotak besar: Bebas</div>
+      </div>
+      <div class="log panel" id="log"></div>
+    </div>
+
+    <aside class="side">
+      <div class="panel" style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="row">
+            <div class="tiny">Scoreboard (kotak besar dimenangkan)</div>
+            <div style="display:flex;gap:10px;margin-top:8px">
+              <div style="text-align:center">
+                <div class="badge" id="scoreO">O: 0</div>
+                <div class="tiny">Player A</div>
+              </div>
+              <div style="text-align:center">
+                <div class="badge" id="scoreX">X: 0</div>
+                <div class="tiny">Player B</div>
+              </div>
+              <div style="text-align:center">
+                <div class="badge" id="scoreT">Tie: 0</div>
+                <div class="tiny">Kotak penuh</div>
+              </div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="tiny">Mode</div>
+            <div id="modeBadge" class="tiny" style="font-weight:700">2 Player</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:8px">
+        <div class="tiny" style="margin-bottom:8px">Kontrol Cepat</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button id="hintBtn" class="btn ghost">Tunjukkan Hint AI</button>
+          <button id="toggleHints" class="btn ghost">Toggle Highlight Valid</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="tiny">Petunjuk singkat</div>
+        <div class="meta" style="margin-top:8px">
+          • Isi kotak kecil mana saja di kotak besar yang diizinkan.<br>
+          • Setelah isi posisi kecil ke-<em>k</em>, lawan wajib main di kotak besar ke-<em>k</em> (kecuali kotak besar tersebut sudah milik pemain atau penuh).<br>
+          • Menang: dapatkan 3 kotak besar sejajar.
+        </div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+/* Advanced Ultimate Tic Tac Toe
+Features added:
+- highlight valid small cells (toggleable), AI hint button
+- scoreboard (counts of big boards won by O/X/T)
+- AI opponent with 3 difficulty levels
+- undo (one step)
+- mobile-friendly responsive layout
+
+Data model:
+- boards: [9][9] small boards
+- bigOwners: [9] null/'O'/'X'/'T'
+- currentPlayer: 'O'/'X'
+- nextBig: null or 0..8
+- history: stack for undo
+*/
+
+const bigGridEl = document.getElementById('bigGrid');
+const statusEl = document.getElementById('status');
+const nextInfoEl = document.getElementById('nextInfo');
+const restartBtn = document.getElementById('restartBtn');
+const modeSel = document.getElementById('modeSel');
+const aiLevel = document.getElementById('aiLevel');
+const modeBadge = document.getElementById('modeBadge');
+const scoreOEl = document.getElementById('scoreO');
+const scoreXEl = document.getElementById('scoreX');
+const scoreTEl = document.getElementById('scoreT');
+const hintBtn = document.getElementById('hintBtn');
+const toggleHints = document.getElementById('toggleHints');
+const undoBtn = document.getElementById('undoBtn');
+const logEl = document.getElementById('log');
+
+let boards, bigOwners, currentPlayer, nextBig, gameOver, showValidHints, history;
+
+function init(){
+  boards = Array.from({length:9}, ()=>Array(9).fill(null));
+  bigOwners = Array(9).fill(null);
+  currentPlayer = 'O';
+  nextBig = null;
+  gameOver = false;
+  showValidHints = true;
+  history = [];
+  updateModeBadge();
+  render();
+  clearLog();
+}
+
+function updateModeBadge(){
+  modeBadge.textContent = modeSel.value === 'ai' ? `Vs AI (${aiLevel.value})` : '2 Player';
+}
+
+function log(msg){
+  const time = new Date().toLocaleTimeString();
+  logEl.innerHTML = `<div style="margin-bottom:6px"><strong>${time}</strong> — ${msg}</div>` + logEl.innerHTML;
+}
+
+function clearLog(){ logEl.innerHTML = ''; }
+
+function idxToLabel(i){ return String.fromCharCode(65 + i); }
+
+function render(){
+  bigGridEl.innerHTML = '';
+  for(let b=0;b<9;b++){
+    const bigCell = document.createElement('div');
+    bigCell.className = 'big-cell';
+    if(nextBig === b && !gameOver) bigCell.classList.add('allowed');
+    if(bigOwners[b]) bigCell.classList.add('won');
+
+    for(let s=0;s<9;s++){
+      const btn = document.createElement('button');
+      btn.className = 'small-btn';
+      const val = boards[b][s];
+      btn.textContent = val ? val : '';
+      if(val) btn.classList.add('disabled');
+
+      // determine valid clickable: not gameOver, not owned big, cell empty,
+      // and either nextBig is null or equals b
+      const isValid = !gameOver && !bigOwners[b] && !boards[b][s] && (nextBig === null || nextBig === b);
+      if(!isValid) btn.classList.add('disabled');
+      if(isValid && showValidHints) btn.classList.add('valid');
+
+      btn.addEventListener('click', ()=>onSmallClick(b,s));
+      bigCell.appendChild(btn);
+    }
+
+    if(bigOwners[b]){
+      const ov = document.createElement('div');
+      ov.className = 'owner-overlay';
+      if(bigOwners[b] === 'T'){ ov.textContent = 'TIE'; ov.classList.add('tie'); }
+      else ov.textContent = bigOwners[b];
+      bigCell.appendChild(ov);
+    }
+
+    bigGridEl.appendChild(bigCell);
+  }
+
+  statusEl.textContent = gameOver ? 'Permainan selesai' : `Giliran: ${currentPlayer} (${currentPlayer==='O'?'Player A':'Player B'})`;
+  nextInfoEl.textContent = nextBig === null ? 'Target kotak besar: Bebas' : `Target kotak besar: ${idxToLabel(nextBig)}`;
+  updateScoreboard();
+}
+
+function updateScoreboard(){
+  const o = bigOwners.filter(x=>x==='O').length;
+  const x = bigOwners.filter(x=>x==='X').length;
+  const t = bigOwners.filter(x=>x==='T').length;
+  scoreOEl.textContent = `O: ${o}`;
+  scoreXEl.textContent = `X: ${x}`;
+  scoreTEl.textContent = `Tie: ${t}`;
+}
+
+function onSmallClick(b, s){
+  if(gameOver) return;
+  if(nextBig !== null && nextBig !== b) return;
+  if(bigOwners[b]) return;
+  if(boards[b][s]) return;
+
+  // save state for undo (shallow copy enough)
+  history.push({
+    boards: boards.map(arr=>arr.slice()),
+    bigOwners: bigOwners.slice(),
+    currentPlayer, nextBig
+  });
+  if(history.length > 100) history.shift();
+
+  // place
+  boards[b][s] = currentPlayer;
+  log(`${currentPlayer} isi kotak kecil ${s} di kotak besar ${idxToLabel(b)}`);
+
+  // check small board winner
+  const winner = checkSmallBoardWin(boards[b]);
+  if(winner){
+    bigOwners[b] = winner;
+    log(`${winner} merebut kotak besar ${idxToLabel(b)}`);
+  } else if(boards[b].every(x => x !== null)){
+    bigOwners[b] = 'T';
+    log(`Kotak besar ${idxToLabel(b)} menjadi penuh (TIE)`);
+  }
+
+  // check big winner
+  const bigWinner = checkBigWin();
+  if(bigWinner){
+    gameOver = true;
+    render();
+    setTimeout(()=> alert(`Pemenang besar: ${bigWinner}  — ${bigWinner==='O'?'Player A':'Player B'}`), 50);
+    log(`Permainan selesai. Pemenang: ${bigWinner}`);
+    return;
+  }
+
+  // nextBig
+  if(bigOwners[s] === null){
+    nextBig = s;
+  } else {
+    nextBig = null;
+  }
+
+  // swap
+  currentPlayer = currentPlayer === 'O' ? 'X' : 'O';
+
+  // check moves left
+  const anyMoves = boards.some((sb,i)=> bigOwners[i] === null && sb.some(cell => cell === null));
+  if(!anyMoves){
+    gameOver = true;
+    setTimeout(()=> alert('Permainan berakhir seri (tidak ada langkah tersisa).'), 50);
+    log('Permainan berakhir seri - papan penuh.');
+  }
+
+  render();
+
+  // if vs AI and it's AI turn, trigger AI move
+  if(!gameOver && modeSel.value === 'ai' && getAIPlayer() === currentPlayer){
+    setTimeout(()=> aiMakeMove(), 250); // small delay for UX
+  }
+}
+
+// small board win lines
+const LINES = [
+  [0,1,2],[3,4,5],[6,7,8],
+  [0,3,6],[1,4,7],[2,5,8],
+  [0,4,8],[2,4,6]
+];
+
+function checkSmallBoardWin(sb){
+  for(const [a,b,c] of LINES){
+    if(sb[a] && sb[a] === sb[b] && sb[a] === sb[c]) return sb[a];
+  }
+  return null;
+}
+
+function checkBigWin(){
+  for(const [a,b,c] of LINES){
+    if(bigOwners[a] && bigOwners[a] !== 'T' && bigOwners[a] === bigOwners[b] && bigOwners[a] === bigOwners[c]) return bigOwners[a];
+  }
+  return null;
+}
+
+/* AI logic:
+- getAIPlayer() returns which mark AI uses (X by default when modeSel=ai)
+- AI difficulty:
+  - easy: random valid move
+  - medium: try win small board -> block opponent -> prefer moves sending opponent to owned/full -> random among remaining
+  - hard: medium + prefer moves that help win big board (choose moves that create 2-in-a-row in bigOwners or win small that forms big pattern)
+Note: This is a heuristic AI, not full minimax due to complexity/performance.
+*/
+
+function getAIPlayer(){
+  // assume human is O if human starts as O; but allow both - we assign AI to X (Player B) to match prior design
+  // For simplicity: when modeSel=ai, AI plays as X (player B). If you want to swap, we can add UI.
+  return 'X';
+}
+
+function aiMakeMove(){
+  const ai = getAIPlayer();
+  const level = aiLevel.value;
+  // gather valid moves: list of {b,s}
+  let validMoves = [];
+  for(let b=0;b<9;b++){
+    if(bigOwners[b]) continue;
+    if(nextBig !== null && nextBig !== b) continue;
+    for(let s=0;s<9;s++){
+      if(!boards[b][s]) validMoves.push({b,s});
+    }
+  }
+  if(validMoves.length === 0){
+    // if nextBig constraint prevents all, allow any non-owned non-full
+    for(let b=0;b<9;b++){
+      if(bigOwners[b]) continue;
+      for(let s=0;s<9;s++) if(!boards[b][s]) validMoves.push({b,s});
+    }
+  }
+
+  // EASY: random
+  if(level === 'easy'){
+    const choice = validMoves[Math.floor(Math.random()*validMoves.length)];
+    if(choice) onSmallClick(choice.b, choice.s);
+    return;
+  }
+
+  // helper functions
+  const opponent = ai === 'O' ? 'X' : 'O';
+
+  // try immediate winning move in small board (create 3 in a row)
+  for(const mv of validMoves){
+    const copy = boards[mv.b].slice();
+    copy[mv.s] = ai;
+    if(checkSmallBoardWin(copy) === ai){
+      return onSmallClick(mv.b, mv.s);
+    }
+  }
+
+  // block opponent immediate win in that small board
+  for(const mv of validMoves){
+    const copy = boards[mv.b].slice();
+    copy[mv.s] = opponent;
+    if(checkSmallBoardWin(copy) === opponent){
+      return onSmallClick(mv.b, mv.s);
+    }
+  }
+
+  // MEDIUM: prefer moves that send opponent to a big cell that is owned by AI (giving opponent freedom -> avoid) or owned by opponent -> force?
+  // We'll score moves heuristically:
+  const scores = validMoves.map(mv => {
+    let score = 0;
+    // prefer moves that allow AI to win big board next: simulate resulting bigOwners
+    let bOwners = bigOwners.slice();
+    // simulate small board change
+    let smallCopy = boards[mv.b].slice();
+    smallCopy[mv.s] = ai;
+    const w = checkSmallBoardWin(smallCopy);
+    if(w === ai) bOwners[mv.b] = ai;
+    else if(smallCopy.every(x=>x!==null)) bOwners[mv.b] = 'T';
+
+    // check if this creates a big two-in-row for AI
+    for(const [a,b,c] of LINES){
+      const arr = [bOwners[a], bOwners[b], bOwners[c]];
+      const aiCount = arr.filter(x=>x===ai).length;
+      const emptyCount = arr.filter(x=>x===null).length;
+      if(aiCount===2 && emptyCount===1) score += 30; // strong
+    }
+
+    // lower weight if move sends opponent to a big owned by opponent (bad) or free (neutral)
+    const target = mv.s;
+    if(bigOwners[target] === opponent) score += 8; // good: opponent forced into their own box -> gives them nothing (they can still play but box is theirs)
+    if(bigOwners[target] === ai) score -= 6; // bad: gives opponent free play
+    // prefer center small cells
+    if(mv.s === 4) score += 6;
+    // prefer center big boards
+    if(mv.b === 4) score += 4;
+    // random jitter
+    score += Math.random()*6;
+    return {mv, score};
+  });
+
+  scores.sort((a,b)=>b.score-a.score);
+  if(level === 'medium'){
+    const choice = scores[0].mv;
+    if(choice) return onSmallClick(choice.b, choice.s);
+  }
+
+  // HARD: deeper heuristic - try to block opponent's big-win and aim for big-win.
+  if(level === 'hard'){
+    // If opponent can win big next move, try to prevent (by capturing that big or preventing small)
+    // find opponent immediate big-win possibilities: if opponent has 2 bigOwners in a line and third is null -> they can win if they capture that big. We should try to capture that big if possible now.
+    for(const [a,b,c] of LINES){
+      const arr = [bigOwners[a], bigOwners[b], bigOwners[c]];
+      const oppCount = arr.filter(x=>x===opponent).length;
+      const emptyIdx = [a,b,c].find(i => bigOwners[i]===null);
+      if(oppCount===2 && emptyIdx !== undefined){
+        // try to make a move that wins that big (i.e., play in that small board to win it)
+        // if we can in one move inside emptyIdx, do it
+        const candidates = validMoves.filter(mv=>mv.b === emptyIdx);
+        for(const mv of candidates){
+          const cp = boards[mv.b].slice(); cp[mv.s] = ai;
+          if(checkSmallBoardWin(cp) === ai){
+            return onSmallClick(mv.b, mv.s);
+          }
+        }
+        // else try to play elsewhere that sends opponent away from that big (complicated).
+      }
+    }
+
+    // fallback: take best from scores
+    const choice = scores[0].mv;
+    if(choice) return onSmallClick(choice.b, choice.s);
+  }
+
+  // final fallback random
+  const fallback = validMoves[Math.floor(Math.random()*validMoves.length)];
+  if(fallback) onSmallClick(fallback.b, fallback.s);
+}
+
+// hint function: show AI-preferred move visually (adds ai-hint class temporarily)
+hintBtn.addEventListener('click', ()=>{
+  if(modeSel.value !== 'ai'){ alert('Hint AI hanya aktif pada mode vs AI.'); return; }
+  // find best move using same heuristic as AI (but don't trigger)
+  const ai = getAIPlayer();
+  // generate valid moves
+  let validMoves = [];
+  for(let b=0;b<9;b++){
+    if(bigOwners[b]) continue;
+    if(nextBig !== null && nextBig !== b) continue;
+    for(let s=0;s<9;s++) if(!boards[b][s]) validMoves.push({b,s});
+  }
+  if(validMoves.length===0){
+    for(let b=0;b<9;b++) if(!bigOwners[b]) for(let s=0;s<9;s++) if(!boards[b][s]) validMoves.push({b,s});
+  }
+  if(validMoves.length===0) return;
+  // use ai scoring (hard)
+  const opponent = ai === 'O' ? 'X' : 'O';
+  const scores = validMoves.map(mv => {
+    let score = 0;
+    let bOwners = bigOwners.slice();
+    let smallCopy = boards[mv.b].slice();
+    smallCopy[mv.s] = ai;
+    const w = checkSmallBoardWin(smallCopy);
+    if(w === ai) bOwners[mv.b] = ai;
+    else if(smallCopy.every(x=>x!==null)) bOwners[mv.b] = 'T';
+    for(const [a,b,c] of LINES){
+      const arr = [bOwners[a], bOwners[b], bOwners[c]];
+      const aiCount = arr.filter(x=>x===ai).length;
+      const emptyCount = arr.filter(x=>x===null).length;
+      if(aiCount===2 && emptyCount===1) score += 30;
+    }
+    if(mv.s===4) score += 6;
+    if(mv.b===4) score += 4;
+    score += Math.random()*6;
+    return {mv,score};
+  });
+  scores.sort((a,b)=>b.score-a.score);
+  const best = scores[0].mv;
+  // highlight that move temporarily by adding ai-hint class to the right button
+  // find the button
+  // bigGridEl children: big cells; each big cell has 9 buttons in order
+  const bigCellEl = bigGridEl.children[best.b];
+  if(!bigCellEl) return;
+  const btn = bigCellEl.querySelectorAll('.small-btn')[best.s];
+  if(!btn) return;
+  btn.classList.add('ai-hint');
+  setTimeout(()=> btn.classList.remove('ai-hint'), 1800);
+});
+
+// toggle highlight valid
+toggleHints.addEventListener('click', ()=>{
+  showValidHints = !showValidHints;
+  render();
+});
+
+// undo
+undoBtn.addEventListener('click', ()=>{
+  if(history.length === 0){ alert('Tidak ada langkah untuk di-undo'); return; }
+  const prev = history.pop();
+  boards = prev.boards.map(arr=>arr.slice());
+  bigOwners = prev.bigOwners.slice();
+  currentPlayer = prev.currentPlayer;
+  nextBig = prev.nextBig;
+  gameOver = false;
+  render();
+  log('Undo langkah terakhir');
+});
+
+restartBtn.addEventListener('click', ()=>{
+  if(confirm('Mulai ulang permainan?')) init();
+});
+
+modeSel.addEventListener('change', ()=>{
+  updateModeBadge();
+  // if switched to ai and it's AI turn, trigger AI
+  if(modeSel.value === 'ai' && !gameOver && getAIPlayer() === currentPlayer){
+    setTimeout(()=> aiMakeMove(), 300);
+  }
+});
+
+aiLevel.addEventListener('change', ()=> updateModeBadge());
+
+// initial setup
+init();
+
+/* Accessibility: allow keyboard to restart with R */
+window.addEventListener('keydown', (e)=>{
+  if(e.key.toLowerCase() === 'r') init();
+});
+
+// render initial
+render();
+
+</script>
+</body>
+</html>
